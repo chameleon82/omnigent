@@ -4861,6 +4861,19 @@ def run_host_process(
     configure_host_gh(server_url, identity.host_id)
     start_host_gh_refresh(server_url, identity.host_id)
 
+    # GitLab follows the same broker model. Its helper checks the requested HTTPS
+    # host against the connected instance, which supports self-managed instances
+    # without allowing a token to reach another remote.
+    from omnigent.git_credential_gitlab import (
+        configure_host_gitlab,
+        configure_host_glab,
+        start_host_glab_refresh,
+    )
+
+    configure_host_gitlab(server_url, identity.host_id)
+    configure_host_glab(server_url, identity.host_id)
+    start_host_glab_refresh(server_url, identity.host_id)
+
     # Executor-agnostic Databricks setup: when the owner has linked a workspace,
     # materialize their per-user token as a ``~/.databrickscfg`` profile so the
     # agent's model serving + MCP route through their Databricks AI Gateway.
