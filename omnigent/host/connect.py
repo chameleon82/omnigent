@@ -3439,6 +3439,10 @@ class HostProcess:
             )
         if op == "github_pr_diff":
             return r.github_pr_diff(session_id, cast("str | None", params.get("pr_url")))
+        if op == "gitlab_info":
+            return r.gitlab_info(session_id, cast("str | None", params.get("mr_url")))
+        if op == "gitlab_mr_diff":
+            return r.gitlab_mr_diff(session_id, cast("str | None", params.get("mr_url")))
         raise ValueError(f"unknown fs op: {op!r}")
 
     def _handle_fs_write(self, frame: HostFsWriteFrame) -> HostFsResultFrame:
@@ -3506,7 +3510,7 @@ class HostProcess:
         """
         from typing import cast
 
-        from omnigent.runner import github_resource
+        from omnigent.runner import github_resource, gitlab_resource
 
         if op == "github_set_preference":
             return github_resource.set_github_preference(
@@ -3522,6 +3526,12 @@ class HostProcess:
                 str(params["session_id"]),
                 str(params["url"]),
                 str(params.get("action", "attach")),
+            )
+        if op == "gitlab_mrs_update":
+            return gitlab_resource.update_session_mr(
+                str(params["session_id"]),
+                url=str(params["url"]),
+                action=str(params.get("action", "attach")),
             )
         raise ValueError(f"unknown fs write op: {op!r}")
 

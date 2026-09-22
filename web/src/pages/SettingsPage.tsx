@@ -31,8 +31,8 @@
 
 import {
   type ComponentType,
-  lazy,
   type CSSProperties,
+  lazy,
   type ReactNode,
   Suspense,
   useCallback,
@@ -43,17 +43,19 @@ import {
   useState,
 } from "react";
 import GithubMono from "@lobehub/icons/es/Github/components/Mono";
+import { GitlabIcon } from "@/components/icons/GitlabIcon";
 import { useViewerId } from "@/hooks/useViewerId";
 import {
-  ArchiveRestoreIcon,
   AlertTriangleIcon,
+  ArchiveRestoreIcon,
   BotIcon,
+  ClockIcon,
   DownloadIcon,
   FileDiffIcon,
   FilesIcon,
   KeyRoundIcon,
-  Loader2Icon,
   LaptopMinimalIcon,
+  Loader2Icon,
   LogOutIcon,
   MessagesSquareIcon,
   MinusIcon,
@@ -62,15 +64,14 @@ import {
   PanelRightCloseIcon,
   PanelRightIcon,
   PlusIcon,
-  SunIcon,
   SquareCheckIcon,
   SquareIcon,
+  SunIcon,
   TerminalIcon,
   Trash2Icon,
   UploadIcon,
   UserCogIcon,
   XIcon,
-  ClockIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { PageScroll } from "@/components/PageScroll";
@@ -113,9 +114,9 @@ import {
 } from "@/lib/githubIntegration";
 import {
   beginDatabricksConnect,
+  type DatabricksConnectionStatus,
   disconnectDatabricks,
   fetchDatabricksStatus,
-  type DatabricksConnectionStatus,
 } from "@/lib/databricksIntegration";
 import {
   beginGitlabConnect,
@@ -176,8 +177,8 @@ import {
 import {
   readTerminalThemeMode,
   TERMINAL_THEME_DEFAULT,
-  writeTerminalThemeMode,
   type TerminalThemeMode,
+  writeTerminalThemeMode,
 } from "@/lib/terminalThemePreferences";
 import {
   canRememberTerminalClipboardPreference,
@@ -189,20 +190,20 @@ import {
 import {
   readWorkspacePanelDefault,
   WORKSPACE_PANEL_DEFAULT,
-  writeWorkspacePanelDefault,
   type WorkspacePanelDefault,
+  writeWorkspacePanelDefault,
 } from "@/lib/workspacePanelPreferences";
 import {
   readTranscriptViewDefault,
   TRANSCRIPT_VIEW_DEFAULT,
-  writeTranscriptViewDefault,
   type TranscriptViewDefault,
+  writeTranscriptViewDefault,
 } from "@/lib/transcriptViewPreferences";
 import {
   DEFAULT_WORKSPACE_TAB,
+  type DefaultWorkspaceTab,
   readDefaultWorkspaceTab,
   writeDefaultWorkspaceTab,
-  type DefaultWorkspaceTab,
 } from "@/lib/workspaceTabPreferences";
 import { readDefaultBaseBranch, writeDefaultBaseBranch } from "@/lib/baseBranchPreferences";
 import { readAlwaysSteer, writeAlwaysSteer } from "@/lib/alwaysSteerPreferences";
@@ -233,10 +234,10 @@ import {
 import {
   applyCustomTheme,
   createCustomThemeFromPalette,
+  type CustomTheme,
   customThemeSwatches,
   DEFAULT_CUSTOM_THEME,
   readCustomTheme,
-  type CustomTheme,
   writeCustomTheme,
 } from "@/lib/customTheme";
 import { useIsEmbedded } from "@/lib/embedded";
@@ -252,9 +253,9 @@ import {
   getCliStatus,
   isElectronShell,
   resetCliPath,
+  updateBridge,
   type UpdateConfig,
   type UpdateMode,
-  updateBridge,
 } from "@/lib/nativeBridge";
 import { cn } from "@/lib/utils";
 import {
@@ -401,6 +402,7 @@ const workspaceTabCards: {
   { value: "files", label: "Files", icon: FilesIcon },
   { value: "changes", label: "Changes", icon: FileDiffIcon },
   { value: "github", label: "GitHub", icon: GithubMono },
+  { value: "gitlab", label: "GitLab", icon: GitlabIcon },
   { value: "subagents", label: "Agents", icon: BotIcon },
 ];
 
@@ -1109,7 +1111,7 @@ function GithubMark({ className }: { className?: string }) {
 }
 
 /**
-/**
+ /**
  * Which panel connects/disconnects each provider. The server's
  * ``enabled_connections`` list says WHICH panels to show; this map says HOW to
  * render each. Adding a provider is one entry here plus one string server-side.
