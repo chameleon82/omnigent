@@ -27,8 +27,8 @@ interface FileViewerContextType {
   registerNavigationGuard?: (guard: FileNavigationGuard) => () => void;
   /** Open GitHub in the workspace rail or mobile drawer. */
   openGithubTab: () => void;
-  /** Open GitLab in the workspace rail. */
-  openGitlabTab: () => void;
+  /** Open GitLab in the workspace rail when the provider is configured. */
+  openGitlabTab?: () => void;
   /**
    * Returns true when `path` is a known workspace file (present in the
    * session's changed-files list). Used as the synchronous fast path for
