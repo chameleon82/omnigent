@@ -43,7 +43,7 @@ from typing import TypeAlias, cast
 from omnigent.entities.environment_filesystem import FilesystemEntry, InvalidPath
 from omnigent.entities.pagination import paginate_in_memory
 from omnigent.inner._cwd_scan import _DEFAULT_DEPRIORITIZED_DIRS
-from omnigent.runner import github_resource
+from omnigent.runner import github_resource, gitlab_resource
 from omnigent.runner.environment_filesystem import (
     _SEARCH_SCAN_BUDGET,
     _glob_to_regex,
