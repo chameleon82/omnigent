@@ -250,10 +250,9 @@ _CODEX_POPUP_RENDER_S = 0.7
 # fails loud instead of the label claiming a mode the TUI never entered.
 _CODEX_PERMISSION_CONFIRM_BUDGET_S = 4.0
 
-# The app-server catalog is queried after Codex is already running. Keep its
-# live, account-aware refresh bounded so a stalled ``model/list`` RPC does not
-# leave the session picker request pending indefinitely. A timeout is retryable
-# and deliberately does not write partial rows into the shared catalog.
+# Budget for the live, account-aware ``model/list`` refresh of an already-running
+# app-server. A stalled RPC fails the picker request retryably instead of leaving
+# it pending, and partial rows are never written back to the shared catalog.
 _CODEX_NATIVE_MODEL_OPTIONS_TIMEOUT_S = 5.0
 
 
