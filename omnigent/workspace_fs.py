@@ -627,3 +627,31 @@ class WorkspaceReader:
                 pr_url=pr_url,
             ),
         )
+
+    # ── GitLab integration (read-only) ─────────────────────────────
+
+    def gitlab_info(
+        self, session_id: str | None = None, mr_url: str | None = None
+    ) -> _WorkspacePayload:
+        """GitLab context for an explicit session MR or the workspace branch."""
+        return cast(
+            "_WorkspacePayload",
+            gitlab_resource.gitlab_info(
+                str(self._root),
+                session_id=session_id,
+                pr_url=mr_url,
+            ),
+        )
+
+    def gitlab_mr_diff(
+        self, session_id: str | None = None, mr_url: str | None = None
+    ) -> _WorkspacePayload:
+        """The selected GitLab MR's unified diff patch."""
+        return cast(
+            "_WorkspacePayload",
+            gitlab_resource.gitlab_mr_diff(
+                str(self._root),
+                session_id=session_id,
+                pr_url=mr_url,
+            ),
+        )

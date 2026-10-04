@@ -964,6 +964,7 @@ function WorkspacePanelImpl({
   const visiblePermanentTabs: RightRailTab[] = tabOrder.filter((tab) => {
     if (tab === "subagents") return true;
     if (tab === "github") return pending || showGithubTab;
+    if (tab === "gitlab") return pending || showGitlabTab;
     return pending || showFilesPanel;
   });
   const shortcutFor = (tab: RightRailTab) => {
@@ -996,6 +997,7 @@ function WorkspacePanelImpl({
     tabOrder.find((tab) => {
       if (tab === "subagents") return true;
       if (tab === "github") return showGithubTab;
+      if (tab === "gitlab") return showGitlabTab;
       return showFilesPanel;
     }) ?? "subagents";
   useEffect(() => {
