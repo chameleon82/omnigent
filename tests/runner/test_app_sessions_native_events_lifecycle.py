@@ -937,14 +937,14 @@ async def test_codex_native_model_options_stalled_model_list_fails_retryably(
     retryable 503 within its budget and schedules no write-back of partial rows.
     """
     from omnigent.harnesses.codex_native import app_server as codex_native_app_server
-    from omnigent.runner import app as runner_app_module
+    from omnigent.runner import native_controls as native_controls_module
 
     monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setattr(
         "omnigent.runtime.workflow._resolve_provider_for_build", lambda *_args, **_kwargs: None
     )
     monkeypatch.setattr(
-        runner_app_module, "_CODEX_NATIVE_MODEL_OPTIONS_TIMEOUT_S", 0.5, raising=False
+        native_controls_module, "_CODEX_NATIVE_MODEL_OPTIONS_TIMEOUT_S", 0.5
     )
     conv_id = "5b1e6d0c9f3a4e7b8c2d1f0a9e8b7c6d"
     monkeypatch.setattr(codex_native_bridge, "_BRIDGE_ROOT", tmp_path / "codex-bridge")
