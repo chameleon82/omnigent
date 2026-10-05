@@ -41,6 +41,8 @@ from omnigent.host.frames import (
     HostDetectCredentialsResultFrame,
     HostFsRequestFrame,
     HostHarnessReadinessFrame,
+    HostHarnessStartupFrame,
+    HostHarnessStartupResultFrame,
     HostHelloFrame,
     HostImportLocalByIdFrame,
     HostImportLocalFrame,
@@ -54,9 +56,13 @@ from omnigent.host.frames import (
     HostMcpServersResultFrame,
     HostModelOptionsFrame,
     HostModelOptionsResultFrame,
+    HostPluginsFrame,
+    HostPluginsResultFrame,
     HostRunnerExitedFrame,
     HostRunnerStatusFrame,
     HostRunnerStatusResultFrame,
+    HostSkillContentFrame,
+    HostSkillContentResultFrame,
     HostSkillsFrame,
     HostSkillsResultFrame,
     HostStatFrame,
@@ -291,6 +297,32 @@ async def test_host_skills_does_not_block_tunnel(
     assert decode_host_frame(ws.sent[-1]) == HostSkillsResultFrame(
         request_id="skills", status="ok"
     )
+
+
+@pytest.mark.parametrize("fails", [False, True])
+async def test_host_answers_launch_settings(monkeypatch, fails):
+    from omnigent.host.harness_startup import HarnessStartup
+
+    expected = HarnessStartup(
+        command="claude", resolved_path=None, command_source="default", arg_count=2
+    )
+
+    def describe(harness):
+        assert harness == "claude-native"
+        if fails:
+            raise ValueError("SECRET")
+        return expected
+
+    monkeypatch.setattr("omnigent.host.harness_startup.describe_harness_startup", describe)
+    host, ws = _make_host_process(), _RecordingWS()
+    host._start_frame_task(
+        ws, encode_host_frame(HostHarnessStartupFrame("startup", "claude-native"))
+    )
+    await _drain_frame_tasks(host)
+    assert decode_host_frame(ws.sent[-1]) == HostHarnessStartupResultFrame(
+        "startup", None if fails else expected
+    )
+    assert "SECRET" not in ws.sent[-1]
 
 
 async def test_host_answers_mcp_inventory_over_the_tunnel(
@@ -8285,3 +8317,61 @@ def test_fs_reader_picks_up_a_repo_created_after_first_request(
 
     assert second.status == "ok", second
     assert [e["path"] for e in second.payload["data"]] == ["zzz/target.jsonnet"], second.payload
+
+
+async def test_host_answers_plugins_over_the_tunnel(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("omnigent.host.plugins.discover_plugins", lambda: [{"name": "hooks-only"}])
+    host = _make_host_process()
+    ws = _RecordingWS()
+    host._start_frame_task(ws, encode_host_frame(HostPluginsFrame("p")))
+    await _drain_frame_tasks(host)
+    assert decode_host_frame(ws.sent[-1]) == HostPluginsResultFrame(
+        "p", "ok", plugins=[{"name": "hooks-only"}]
+    )
+
+
+async def test_host_reports_plugins_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail():
+        raise RuntimeError("synthetic-secret")
+
+    monkeypatch.setattr("omnigent.host.plugins.discover_plugins", fail)
+    result = _make_host_process()._handle_plugins(HostPluginsFrame("p"))
+    assert result.status == "failed"
+    assert "synthetic-secret" not in encode_host_frame(result)
+
+
+async def test_host_answers_skill_content_over_the_tunnel(monkeypatch):
+    skill = {
+        "name": "toolkit:lint",
+        "description": "Lint",
+        "content": "Run lint.",
+        "truncated": False,
+    }
+
+    def read(harness, name, source_id):
+        assert (harness, name, source_id) == ("claude-native", "toolkit:lint", "a" * 64)
+        return skill
+
+    monkeypatch.setattr("omnigent.host.skill_content.read_skill_content", read)
+    host = _make_host_process()
+    ws = _RecordingWS()
+    host._start_frame_task(
+        ws,
+        encode_host_frame(HostSkillContentFrame("s", "claude-native", "toolkit:lint", "a" * 64)),
+    )
+    await _drain_frame_tasks(host)
+    result = decode_host_frame(ws.sent[-1])
+    assert isinstance(result, HostSkillContentResultFrame)
+    assert (result.request_id, result.status, result.skill) == ("s", "ok", skill)
+
+
+async def test_host_skill_content_failure_is_private(monkeypatch, caplog):
+    def fail(*args, **kwargs):
+        raise RuntimeError("synthetic-private-body")
+
+    monkeypatch.setattr("omnigent.host.skill_content.read_skill_content", fail)
+    result = _make_host_process()._handle_skill_content(
+        HostSkillContentFrame("s", "claude-native", "review")
+    )
+    assert result.status == "failed"
+    assert "synthetic-private-body" not in encode_host_frame(result) + caplog.text

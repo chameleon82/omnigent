@@ -8,14 +8,54 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { SkillContent } from "@/hooks/useSkillContent";
 import type { HarnessInventory } from "@/hooks/useHarnessInventory";
-import type { Host } from "@/hooks/useHosts";
+import { ApiError } from "@/lib/sessionsApi";
+import type { HarnessStartup, Host } from "@/hooks/useHosts";
 import { SettingsHarnessesSection } from "./SettingsHarnessesSection";
 
+let pluginMetadataRequested = false;
+const CONTENT: SkillContent = {
+  name: "review",
+  description: "Review diffs.",
+  content:
+    "## Instructions\nRead the diff.\n![private image](https://example.test/pixel)\n<script>secret()</script>",
+  truncated: false,
+};
+let contentQuery: { data?: SkillContent; error?: unknown; isPending: boolean } = {
+  data: CONTENT,
+  isPending: false,
+};
+let contentLookup: [string, string, string] | null = null;
+let contentSource: string | undefined;
+vi.mock("@/hooks/useSkillContent", () => ({
+  useSkillContent: (
+    hostId: string,
+    harness: string,
+    name: string,
+    { sourceId }: { sourceId?: string },
+  ) => {
+    contentLookup = [hostId, harness, name];
+    contentSource = sourceId;
+    return contentQuery;
+  },
+}));
+const STARTUP: HarnessStartup = {
+  command: "claude",
+  resolved_path: "/opt/bin/claude",
+  command_source: "config",
+  arg_count: 2,
+};
+let startupError: ApiError | null = null;
+const startupCalls = vi.fn();
 let hosts: Host[] = [];
 vi.mock("@/hooks/useHosts", async (importActual) => ({
   ...(await importActual()),
   useHosts: () => ({ data: hosts }),
+  useHarnessStartup: (hostId: string, harness: string) => {
+    startupCalls(hostId, harness);
+    return { data: startupError ? undefined : STARTUP, error: startupError, isPending: false };
+  },
 }));
 
 // Claude has two MCP servers (one from the toolkit plugin), a skill, and that
@@ -49,7 +89,10 @@ const INVENTORY: HarnessInventory = {
 let inventory: HarnessInventory = INVENTORY;
 vi.mock("@/hooks/useHarnessInventory", async (importActual) => ({
   ...(await importActual()),
-  useHarnessInventory: () => inventory,
+  useHarnessInventory: (_host: Host, options: { includePluginMetadata: boolean }) => {
+    pluginMetadataRequested = options.includePluginMetadata;
+    return inventory;
+  },
 }));
 
 // The "Set up" button is gated on the harness_install feature (like New Chat),
@@ -108,11 +151,16 @@ const ONLINE: Host = {
 };
 
 afterEach(() => {
+  contentQuery = { data: CONTENT, isPending: false };
+  contentLookup = null;
+  contentSource = undefined;
   cleanup();
   hosts = [];
   inventory = INVENTORY;
   harnessInstall = true;
   setupDialogProps.mockReset();
+  startupCalls.mockClear();
+  startupError = null;
 });
 
 describe("Harnesses grid", () => {
@@ -240,6 +288,10 @@ describe("Harness details", () => {
     // The credential lives under the Settings tab.
     selectTab("Settings");
     expect(screen.getByText("AI Gateway")).toBeTruthy();
+    expect(screen.getByText("/opt/bin/claude")).toBeTruthy();
+    expect(screen.getByText("2 configured arguments (values hidden)")).toBeTruthy();
+    expect(screen.getByText(/harness.claude-native.command/)).toBeTruthy();
+    expect(screen.getByText(/workspace's .omnigent/)).toBeTruthy();
   });
 
   it("lists MCP servers and skills as plain rows with host-reported details only", () => {
@@ -255,7 +307,8 @@ describe("Harness details", () => {
     selectTab("Skills · 1");
     const review = screen.getByTestId("catalog-row-review");
     expect(within(review).getByText("Review diffs.")).toBeTruthy();
-    expect(review.tagName).not.toBe("BUTTON");
+    expect(review.tagName).toBe("BUTTON");
+    expect(contentLookup).toBeNull();
   });
 
   it("shows a plugin's skills and bundled MCP servers", () => {
@@ -311,4 +364,183 @@ describe("Harness details", () => {
 
     expect(screen.getByRole("heading", { name: "Harnesses" })).toBeTruthy();
   });
+});
+
+describe("Launch settings compatibility", () => {
+  it.each([404, 501, 502])("keeps the credential when startup returns %s", (status) => {
+    hosts = [ONLINE];
+    startupError = new ApiError("unavailable", status, null);
+    renderHarnesses("claude-native");
+    selectTab("Settings");
+    expect(screen.getByText("Signed in")).toBeTruthy();
+    expect(screen.queryByText("Path to binary")).toBeNull();
+    if (status === 501)
+      expect(screen.getByText("Update my-laptop to see launch settings.")).toBeTruthy();
+    if (status === 502)
+      expect(screen.getByText("Couldn't load launch settings from my-laptop.")).toBeTruthy();
+    if (status === 404) expect(screen.queryByText(/launch settings/)).toBeNull();
+  });
+
+  it("uses the host selected on the grid", () => {
+    hosts = [ONLINE, { ...ONLINE, host_id: "h2", name: "second-host" }];
+    renderHarnesses();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "my-laptop" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "second-host" }));
+    fireEvent.click(screen.getByTestId("harness-settings-claude-native"));
+    expect(startupCalls).toHaveBeenLastCalledWith("h2", "claude-native");
+  });
+});
+
+it("shows installed plugin metadata and disabled bundled servers", () => {
+  hosts = [ONLINE];
+  inventory = {
+    ...INVENTORY,
+    context: {
+      ...INVENTORY.context,
+      plugins: [
+        {
+          id: "claude:hooks@market",
+          harness: "claude",
+          name: "hooks",
+          skills: [],
+          description: "Hook helpers",
+          marketplace: "market",
+          version: "1.2.3",
+          enabled: false,
+          mcp_servers: ["bundled"],
+          has_hooks: true,
+          has_commands: true,
+        },
+      ],
+    },
+  };
+  renderHarnesses("claude-native");
+  selectTab("Plugins · 1");
+  expect(screen.getByTestId("catalog-row-hooks").textContent).toContain("Disabled");
+  fireEvent.click(screen.getByTestId("catalog-row-hooks"));
+  expect(screen.getByText("Hook helpers")).toBeTruthy();
+  expect(screen.getByText(/v1\.2\.3 · market · Disabled/)).toBeTruthy();
+  selectTab("MCPs · 1");
+  expect(screen.getByTestId("catalog-row-bundled")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Plugins" }));
+  expect(screen.getByRole("tab", { name: "Plugins · 1" }).getAttribute("aria-selected")).toBe(
+    "true",
+  );
+});
+
+it.each(["codex-native", "cursor-native"])(
+  "does not request Claude plugin metadata on %s",
+  (harness) => {
+    hosts = [{ ...ONLINE, configured_harnesses: { [harness]: true } }];
+    renderHarnesses(harness);
+    expect(pluginMetadataRequested).toBe(false);
+  },
+);
+
+it("opens skill markdown only on demand and returns to Skills", () => {
+  hosts = [ONLINE];
+  renderHarnesses("claude-native");
+  expect(contentLookup).toBeNull();
+  selectTab("Skills · 1");
+  fireEvent.click(screen.getByTestId("catalog-row-review"));
+  expect(contentLookup).toEqual([ONLINE.host_id, "claude-native", "review"]);
+  expect(screen.getByRole("heading", { name: "Instructions" })).toBeTruthy();
+  expect(document.querySelector("img")).toBeNull();
+  expect(document.querySelector("script")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Skills" }));
+  expect(screen.getByRole("tab", { name: "Skills · 1" }).getAttribute("aria-selected")).toBe(
+    "true",
+  );
+});
+
+it("opens a namespaced plugin skill and returns to that plugin", () => {
+  hosts = [ONLINE];
+  contentQuery = { data: { ...CONTENT, truncated: true }, isPending: false };
+  renderHarnesses("claude-native");
+  selectTab("Plugins · 1");
+  fireEvent.click(screen.getByTestId("catalog-row-toolkit"));
+  fireEvent.click(screen.getByTestId("catalog-row-lint"));
+  expect(contentLookup).toEqual([ONLINE.host_id, "claude-native", "toolkit:lint"]);
+  expect(screen.getByText(/Contents truncated/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "toolkit" }));
+  expect(screen.getByRole("heading", { name: "toolkit" })).toBeTruthy();
+});
+
+it.each([501, 502, 504])("reports skill content failures (%s)", (status) => {
+  hosts = [ONLINE];
+  contentQuery = { error: new ApiError("private", status, null), isPending: false };
+  renderHarnesses("claude-native");
+  selectTab("Skills · 1");
+  fireEvent.click(screen.getByTestId("catalog-row-review"));
+  expect(
+    screen.getByText(
+      status === 501 ? "Update my-laptop to see skill contents." : "Couldn't load skill contents.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryByText("private")).toBeNull();
+});
+
+it("disables plain and plugin skill links after an old-server 404", () => {
+  hosts = [ONLINE];
+  contentQuery = { error: new ApiError("404", 404, null), isPending: false };
+  renderHarnesses("claude-native");
+  selectTab("Skills · 1");
+  fireEvent.click(screen.getByTestId("catalog-row-review"));
+  expect(screen.getByTestId("catalog-row-review").tagName).not.toBe("BUTTON");
+  expect(screen.queryByText("Couldn't load skill contents.")).toBeNull();
+  selectTab("Plugins · 1");
+  fireEvent.click(screen.getByTestId("catalog-row-toolkit"));
+  expect(screen.getByTestId("catalog-row-lint").tagName).not.toBe("BUTTON");
+});
+
+it.each([false, true])("opens installed plugin skill IDs when enabled=%s", (enabled) => {
+  hosts = [ONLINE];
+  inventory = {
+    ...INVENTORY,
+    context: {
+      ...INVENTORY.context,
+      plugins: ["first", "second"].map((marketplace) => ({
+        id: marketplace,
+        name: "toolkit",
+        harness: "claude",
+        marketplace,
+        enabled,
+        skills: ["lint"],
+        skill_entries: [{ id: `${marketplace}-skill`, name: "lint" }],
+      })),
+    },
+  };
+  renderHarnesses("claude-native");
+  selectTab("Plugins · 2");
+  fireEvent.click(screen.getAllByTestId("catalog-row-toolkit")[1]);
+  fireEvent.click(screen.getByTestId("catalog-row-lint"));
+  expect(contentSource).toBe("second-skill");
+  expect(contentLookup).toEqual([ONLINE.host_id, "claude-native", "toolkit:lint"]);
+  expect(screen.getByRole("heading", { name: "Instructions" })).toBeTruthy();
+});
+
+it("requests a host update instead of guessing installed skill identity", () => {
+  hosts = [ONLINE];
+  inventory = {
+    ...INVENTORY,
+    context: {
+      ...INVENTORY.context,
+      plugins: [
+        {
+          ...INVENTORY.context.plugins[0],
+          marketplace: "market",
+          enabled: true,
+        },
+      ],
+    },
+  };
+  renderHarnesses("claude-native");
+  selectTab("Plugins · 1");
+  fireEvent.click(screen.getByTestId("catalog-row-toolkit"));
+  expect(screen.getByText("Update my-laptop to read installed plugin skills.")).toBeTruthy();
+  expect(screen.getByTestId("catalog-row-lint").tagName).not.toBe("BUTTON");
+  expect(contentLookup).toBeNull();
 });

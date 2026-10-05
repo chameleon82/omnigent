@@ -26,7 +26,10 @@ from enum import Enum
 from os import PathLike
 from typing import Any, NoReturn
 
+from pydantic import ValidationError
+
 from omnigent.harness_availability import HarnessAvailability, is_harness_availability
+from omnigent.host.harness_startup import HarnessStartup
 from omnigent.inner.native_attachments import CAP_FILESYSTEM_ATTACHMENTS
 from omnigent.util.json_types import JsonObject as _JsonObject
 from omnigent.util.tunnel_limits import RUNNER_TUNNEL_MAX_MESSAGE_BYTES
@@ -51,12 +54,18 @@ WORKSPACE_MISSING_ERROR_CODE = "workspace_missing"
 CAP_CODEX_SIDE_CHAT = "codex_side_chat"
 # The host answers ``host.mcp_servers`` with its user-level MCP inventory:
 CAP_MCP_INVENTORY = "mcp_inventory"
+CAP_HARNESS_STARTUP = "harness_startup"
+CAP_PLUGINS = "plugins"
+CAP_SKILL_CONTENT = "skill_content"
 
 # Every capability THIS build supports; reported verbatim in the hello frame.
 HOST_CAPABILITIES: list[str] = [
     CAP_CODEX_SIDE_CHAT,
     CAP_FILESYSTEM_ATTACHMENTS,
+    CAP_PLUGINS,
+    CAP_SKILL_CONTENT,
     CAP_MCP_INVENTORY,
+    CAP_HARNESS_STARTUP,
 ]
 
 
@@ -142,6 +151,12 @@ class HostFrameKind(str, Enum):
     MODEL_OPTIONS_RESULT = "host.model_options_result"
     SKILLS = "host.skills"
     SKILLS_RESULT = "host.skills_result"
+    PLUGINS = "host.plugins"
+    PLUGINS_RESULT = "host.plugins_result"
+    SKILL_CONTENT = "host.skill_content"
+    SKILL_CONTENT_RESULT = "host.skill_content_result"
+    HARNESS_STARTUP = "host.harness_startup"
+    HARNESS_STARTUP_RESULT = "host.harness_startup_result"
     MCP_SERVERS = "host.mcp_servers"
     MCP_SERVERS_RESULT = "host.mcp_servers_result"
     IMPORT_LOCAL = "host.import_local"
@@ -1014,6 +1029,22 @@ class HostSkillsResultFrame:
 
 
 @dataclass
+class HostHarnessStartupFrame:
+    """Server → host: read host defaults for a native harness launch."""
+
+    request_id: str
+    harness: str
+
+
+@dataclass
+class HostHarnessStartupResultFrame:
+    """Host → server: allow-listed launch metadata, or None on failure."""
+
+    request_id: str
+    startup: HarnessStartup | None = None
+
+
+@dataclass
 class HostMcpServersFrame:
     """Server → host: list the user-level MCP servers each harness loads."""
 
@@ -1027,6 +1058,43 @@ class HostMcpServersResultFrame:
     request_id: str
     status: str
     mcp_servers: list[dict[str, str]] = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass
+class HostPluginsFrame:
+    """Server → host: list installed Claude plugins."""
+
+    request_id: str
+
+
+@dataclass
+class HostPluginsResultFrame:
+    """Host → server: allow-listed plugin metadata."""
+
+    request_id: str
+    status: str
+    plugins: list[dict[str, object]] | None = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass
+class HostSkillContentFrame:
+    """Server → host: read one skill from the home-scope inventory."""
+
+    request_id: str
+    harness: str
+    name: str
+    source_id: str | None = None
+
+
+@dataclass
+class HostSkillContentResultFrame:
+    """Host → server: the requested SKILL.md body, without filesystem paths."""
+
+    request_id: str
+    status: str
+    skill: dict[str, str | bool] | None = None
     error: str | None = None
 
 
@@ -1190,6 +1258,12 @@ HostFrame = (
     | HostModelOptionsResultFrame
     | HostSkillsFrame
     | HostSkillsResultFrame
+    | HostPluginsFrame
+    | HostPluginsResultFrame
+    | HostSkillContentFrame
+    | HostSkillContentResultFrame
+    | HostHarnessStartupFrame
+    | HostHarnessStartupResultFrame
     | HostMcpServersFrame
     | HostMcpServersResultFrame
     | HostImportLocalFrame
@@ -1602,6 +1676,56 @@ def encode_host_frame(frame: HostFrame) -> str:
                 "agent_id": frame.agent_id,
             }
         )
+    if isinstance(frame, HostPluginsFrame):
+        return _encode_payload(
+            {"kind": HostFrameKind.PLUGINS.value, "request_id": frame.request_id}
+        )
+    if isinstance(frame, HostPluginsResultFrame):
+        return _encode_payload(
+            {
+                "kind": HostFrameKind.PLUGINS_RESULT.value,
+                "request_id": frame.request_id,
+                "status": frame.status,
+                "plugins": frame.plugins,
+                "error": frame.error,
+            }
+        )
+    if isinstance(frame, HostSkillContentFrame):
+        return _encode_payload(
+            {
+                "kind": HostFrameKind.SKILL_CONTENT.value,
+                "request_id": frame.request_id,
+                "harness": frame.harness,
+                "name": frame.name,
+                "source_id": frame.source_id,
+            }
+        )
+    if isinstance(frame, HostSkillContentResultFrame):
+        return _encode_payload(
+            {
+                "kind": HostFrameKind.SKILL_CONTENT_RESULT.value,
+                "request_id": frame.request_id,
+                "status": frame.status,
+                "skill": frame.skill,
+                "error": frame.error,
+            }
+        )
+    if isinstance(frame, HostHarnessStartupFrame):
+        return _encode_payload(
+            {
+                "kind": HostFrameKind.HARNESS_STARTUP.value,
+                "request_id": frame.request_id,
+                "harness": frame.harness,
+            }
+        )
+    if isinstance(frame, HostHarnessStartupResultFrame):
+        return _encode_payload(
+            {
+                "kind": HostFrameKind.HARNESS_STARTUP_RESULT.value,
+                "request_id": frame.request_id,
+                "startup": frame.startup.model_dump() if frame.startup is not None else None,
+            }
+        )
     if isinstance(frame, HostMcpServersFrame):
         return _encode_payload(
             {"kind": HostFrameKind.MCP_SERVERS.value, "request_id": frame.request_id}
@@ -1988,10 +2112,35 @@ def _decode_known_host_frame(
             )
         case HostFrameKind.SKILLS_RESULT:
             return _decode_skills_result(msg)
+        case HostFrameKind.HARNESS_STARTUP:
+            return HostHarnessStartupFrame(
+                request_id=_required_str(msg, "request_id"), harness=_required_str(msg, "harness")
+            )
+        case HostFrameKind.HARNESS_STARTUP_RESULT:
+            request_id = _required_str(msg, "request_id")
+            try:
+                startup = HarnessStartup.model_validate(msg.get("startup"))
+            except ValidationError:
+                # Keep correlation so malformed replies fail promptly instead of timing out.
+                startup = None
+            return HostHarnessStartupResultFrame(request_id, startup)
         case HostFrameKind.MCP_SERVERS:
             return HostMcpServersFrame(request_id=_required_str(msg, "request_id"))
         case HostFrameKind.MCP_SERVERS_RESULT:
             return _decode_mcp_servers_result(msg)
+        case HostFrameKind.PLUGINS:
+            return HostPluginsFrame(request_id=_required_str(msg, "request_id"))
+        case HostFrameKind.PLUGINS_RESULT:
+            return _decode_plugins_result(msg)
+        case HostFrameKind.SKILL_CONTENT:
+            return HostSkillContentFrame(
+                request_id=_required_str(msg, "request_id"),
+                harness=_required_str(msg, "harness"),
+                name=_required_str(msg, "name"),
+                source_id=_optional_nullable_str(msg, "source_id"),
+            )
+        case HostFrameKind.SKILL_CONTENT_RESULT:
+            return _decode_skill_content_result(msg)
         case HostFrameKind.IMPORT_LOCAL:
             return _decode_import_local(msg)
         case HostFrameKind.IMPORT_LOCAL_BY_ID:
@@ -2605,6 +2754,71 @@ def _decode_mcp_servers_result(msg: _JsonObject) -> HostMcpServersResultFrame:
         mcp_servers=servers,
         error=_optional_nullable_str(msg, "error"),
     )
+
+
+_PLUGIN_FIELDS = (
+    "id",
+    "skill_entries",
+    "mcp_entries",
+    "harness",
+    "name",
+    "marketplace",
+    "version",
+    "description",
+    "enabled",
+    "skills",
+    "mcp_servers",
+    "has_hooks",
+    "has_commands",
+)
+
+
+def _decode_plugins_result(msg: _JsonObject) -> HostPluginsResultFrame:
+    """Drop unknown fields; malformed data reaches route validation as a failed reply."""
+    raw = msg.get("plugins")
+    plugins = None
+    if isinstance(raw, list) and all(isinstance(item, dict) for item in raw):
+        plugins = [{key: item[key] for key in _PLUGIN_FIELDS if key in item} for item in raw]
+        for plugin in plugins:
+            for field_name in ("skill_entries", "mcp_entries"):
+                entries = plugin.get(field_name)
+                if isinstance(entries, list):
+                    plugin[field_name] = [
+                        {key: entry[key] for key in ("id", "name") if key in entry}
+                        if isinstance(entry, dict)
+                        else entry
+                        for entry in entries
+                    ]
+    return HostPluginsResultFrame(
+        request_id=_required_str(msg, "request_id"),
+        status=_required_str(msg, "status"),
+        plugins=plugins,
+        error=_optional_nullable_str(msg, "error"),
+    )
+
+
+def _decode_skill_content_result(msg: _JsonObject) -> HostSkillContentResultFrame:
+    request_id = _required_str(msg, "request_id")
+    try:
+        raw = msg.get("skill")
+        skill: dict[str, str | bool] | None = None
+        if raw is not None:
+            if not isinstance(raw, dict):
+                raise ValueError("invalid skill")
+            skill = {key: _required_str(raw, key) for key in ("name", "description", "content")}
+            skill["truncated"] = _required_bool(raw, "truncated")
+        return HostSkillContentResultFrame(
+            request_id=request_id,
+            status=_required_str(msg, "status"),
+            skill=skill,
+            error=_optional_nullable_str(msg, "error"),
+        )
+    except ValueError:
+        return HostSkillContentResultFrame(
+            request_id=request_id,
+            status="failed",
+            error="malformed skill content reply",
+        )
 
 
 def _decode_import_local(msg: _JsonObject) -> HostImportLocalFrame:
