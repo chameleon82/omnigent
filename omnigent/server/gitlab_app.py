@@ -43,19 +43,20 @@ class GitLabAppConfig:
 
     @staticmethod
     def from_env() -> GitLabAppConfig | None:
-        """Build config from GitLab env vars, or disable the provider when absent."""
-        client_id = os.environ.get("OMNIGENT_GITLAB_CLIENT_ID", "").strip()
-        client_secret = os.environ.get("OMNIGENT_GITLAB_CLIENT_SECRET", "").strip()
+        """Build config from ``OMNIGENT_GITLAB_APP_*`` env, or disable it."""
+        client_id = os.environ.get("OMNIGENT_GITLAB_APP_CLIENT_ID", "").strip()
+        client_secret = os.environ.get("OMNIGENT_GITLAB_APP_CLIENT_SECRET", "").strip()
         if not client_id or not client_secret:
             return None
-        host = normalize_gitlab_host(os.environ.get("OMNIGENT_GITLAB_HOST", _DEFAULT_HOST))
-        redirect_uri = os.environ.get("OMNIGENT_GITLAB_REDIRECT_URI", "").strip()
+        host = normalize_gitlab_host(os.environ.get("OMNIGENT_GITLAB_APP_HOST", _DEFAULT_HOST))
+        redirect_uri = os.environ.get("OMNIGENT_GITLAB_APP_REDIRECT_URI", "").strip()
         if not redirect_uri:
             domain = os.environ.get("OMNIGENT_DOMAIN", "").strip()
             if not domain:
                 _logger.warning(
-                    "GitLab client credentials are set but neither OMNIGENT_GITLAB_REDIRECT_URI "
-                    "nor OMNIGENT_DOMAIN is set; GitLab integration stays disabled."
+                    "GitLab App client credentials are set but neither "
+                    "OMNIGENT_GITLAB_APP_REDIRECT_URI nor OMNIGENT_DOMAIN is set; "
+                    "GitLab integration stays disabled."
                 )
                 return None
             redirect_uri = f"https://{domain}/v1/connections/gitlab/callback"
@@ -64,7 +65,7 @@ class GitLabAppConfig:
             client_secret=client_secret,
             host=host,
             redirect_uri=redirect_uri,
-            scopes=os.environ.get("OMNIGENT_GITLAB_SCOPES", "read_user api").strip()
+            scopes=os.environ.get("OMNIGENT_GITLAB_APP_SCOPES", "read_user api").strip()
             or "read_user api",
         )
 
@@ -100,7 +101,7 @@ def normalize_gitlab_host(value: str) -> str:
         or parsed.fragment
     ):
         raise ValueError(
-            "OMNIGENT_GITLAB_HOST must be an HTTPS origin without a path or credentials"
+            "OMNIGENT_GITLAB_APP_HOST must be an HTTPS origin without a path or credentials"
         )
     host = parsed.hostname.lower()
     netloc = host if parsed.port in (None, 443) else f"{host}:{parsed.port}"

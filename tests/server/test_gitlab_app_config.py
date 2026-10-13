@@ -13,8 +13,8 @@ from omnigent.server.gitlab_app import (
 
 
 def test_config_defaults_to_gitlab_com(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OMNIGENT_GITLAB_CLIENT_ID", "client")
-    monkeypatch.setenv("OMNIGENT_GITLAB_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("OMNIGENT_GITLAB_APP_CLIENT_ID", "client")
+    monkeypatch.setenv("OMNIGENT_GITLAB_APP_CLIENT_SECRET", "secret")
     monkeypatch.setenv("OMNIGENT_DOMAIN", "omnigent.example")
     config = GitLabAppConfig.from_env()
     assert config is not None
@@ -24,10 +24,10 @@ def test_config_defaults_to_gitlab_com(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_config_accepts_canonical_self_managed_origin(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OMNIGENT_GITLAB_CLIENT_ID", "client")
-    monkeypatch.setenv("OMNIGENT_GITLAB_CLIENT_SECRET", "secret")
-    monkeypatch.setenv("OMNIGENT_GITLAB_REDIRECT_URI", "https://app.example/callback")
-    monkeypatch.setenv("OMNIGENT_GITLAB_HOST", "https://GitLab.Dedicated.example:443/")
+    monkeypatch.setenv("OMNIGENT_GITLAB_APP_CLIENT_ID", "client")
+    monkeypatch.setenv("OMNIGENT_GITLAB_APP_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("OMNIGENT_GITLAB_APP_REDIRECT_URI", "https://app.example/callback")
+    monkeypatch.setenv("OMNIGENT_GITLAB_APP_HOST", "https://GitLab.Dedicated.example:443/")
     config = GitLabAppConfig.from_env()
     assert config is not None
     assert config.host == "https://gitlab.dedicated.example"

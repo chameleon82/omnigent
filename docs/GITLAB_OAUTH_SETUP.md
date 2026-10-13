@@ -23,7 +23,7 @@ In the configured GitLab instance, create a **confidential** OAuth application w
 https://<omnigent-domain>/v1/connections/gitlab/callback
 ```
 
-Use the exact value configured in `OMNIGENT_GITLAB_REDIRECT_URI` when that variable is set. For a server running locally on the default port 6767, register:
+Use the exact value configured in `OMNIGENT_GITLAB_APP_REDIRECT_URI` when that variable is set. For a server running locally on the default port 6767, register:
 
 ```
 http://localhost:6767/v1/connections/gitlab/callback
@@ -39,7 +39,7 @@ Use these application settings:
 - **Trusted:** disabled, unless a GitLab administrator has explicitly approved bypassing user consent.
 - **Device authorization grant:** disabled; Omnigent uses the browser authorization-code flow.
 - **Scopes for the full integration:** `read_user` and `api`. The `api` scope is required for write-capable merge-request/API workflows.
-- **Scopes for read-only local verification:** `read_user`, `read_api`, and `read_repository`. Configure the exact requested scopes with `OMNIGENT_GITLAB_SCOPES='read_user read_api read_repository'`.
+- **Scopes for read-only local verification:** `read_user`, `read_api`, and `read_repository`. Configure the exact requested scopes with `OMNIGENT_GITLAB_APP_SCOPES='read_user read_api read_repository'`.
 
 ![GitLab OAuth application secrets](images/gitlab-app/02-secrets.png)
 
@@ -49,15 +49,17 @@ Do not enable unrelated privileged scopes such as `sudo`, runner management, Kub
 
 ## 2. Configure Omnigent
 
+The Sandbox Integration follows the same `OMNIGENT_<PROVIDER>_APP_*` naming convention as GitHub's sandbox integration. These variables are separate from `OMNIGENT_OIDC_*`, which configure primary sign-in.
+
 Set the following server environment variables:
 
 ```bash
-OMNIGENT_GITLAB_CLIENT_ID=<oauth-application-id>
-OMNIGENT_GITLAB_CLIENT_SECRET=<oauth-application-secret>
-OMNIGENT_GITLAB_HOST=https://gitlab.example.com  # optional; defaults to https://gitlab.com
-OMNIGENT_GITLAB_REDIRECT_URI=https://omnigent.example.com/v1/connections/gitlab/callback
+OMNIGENT_GITLAB_APP_CLIENT_ID=<oauth-application-id>
+OMNIGENT_GITLAB_APP_CLIENT_SECRET=<oauth-application-secret>
+OMNIGENT_GITLAB_APP_HOST=https://gitlab.example.com  # optional; defaults to https://gitlab.com
+OMNIGENT_GITLAB_APP_REDIRECT_URI=https://omnigent.example.com/v1/connections/gitlab/callback
 # Optional; defaults to "read_user api". Set this to scopes enabled in the GitLab OAuth application.
-# OMNIGENT_GITLAB_SCOPES='read_user read_api read_repository'
+# OMNIGENT_GITLAB_APP_SCOPES='read_user read_api read_repository'
 
 # Choose exactly one encrypted credential backend.
 OMNIGENT_CREDENTIAL_KMS_KEY_ID=<AWS-KMS-key-id>
@@ -68,9 +70,9 @@ OMNIGENT_CREDENTIAL_KMS_KEY_ID=<AWS-KMS-key-id>
 # VAULT_TOKEN=<Vault-token>
 ```
 
-`OMNIGENT_GITLAB_REDIRECT_URI` may be omitted when `OMNIGENT_DOMAIN` is set; Omnigent derives `https://$OMNIGENT_DOMAIN/v1/connections/gitlab/callback`.
+`OMNIGENT_GITLAB_APP_REDIRECT_URI` may be omitted when `OMNIGENT_DOMAIN` is set; Omnigent derives `https://$OMNIGENT_DOMAIN/v1/connections/gitlab/callback`.
 
-`OMNIGENT_GITLAB_HOST` must be an HTTPS origin only: no path, query, fragment, or embedded credentials are accepted. This deliberately makes GitLab Dedicated and self-managed hosts explicit deployment configuration.
+`OMNIGENT_GITLAB_APP_HOST` must be an HTTPS origin only: no path, query, fragment, or embedded credentials are accepted. This deliberately makes GitLab Dedicated and self-managed hosts explicit deployment configuration.
 
 ## 3. Verify
 
@@ -131,11 +133,11 @@ OMNIGENT_OIDC_COOKIE_SECRET=<at-least-64-hex-characters>
 
 `OMNIGENT_AUTH_ENABLED=1` without `OMNIGENT_OIDC_ISSUER` selects Omnigent's built-in accounts provider instead. Setting `OMNIGENT_AUTH_PROVIDER=oidc` explicitly avoids ambiguity and makes incomplete OIDC configuration fail at startup.
 
-The OIDC redirect is intentionally different from the Sandbox Integration redirect:
+The OIDC redirect is intentionally different from the Sandbox Integration redirect and configuration namespace:
 
 ```bash
 OMNIGENT_OIDC_REDIRECT_URI='http://localhost:6767/auth/callback'
-OMNIGENT_GITLAB_REDIRECT_URI='http://localhost:6767/v1/connections/gitlab/callback'
+OMNIGENT_GITLAB_APP_REDIRECT_URI='http://localhost:6767/v1/connections/gitlab/callback'
 ```
 
 After restarting the server, begin the sign-in flow at `/auth/login`. GitLab must return the browser to `/auth/callback`; a return to `/v1/connections/gitlab/callback` means the Sandbox Integration flow was started instead.
